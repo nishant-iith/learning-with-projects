@@ -1,0 +1,33 @@
+# Version Control Ignore Rules
+
+# Agent skills and CLI directory
+.agent/
+.agent
+
+# System Files
+.DS_Store
+Thumbs.db
+
+# IDE / Editor configurations
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+
+# Language / Package Manager artifacts
+node_modules/
+dist/
+build/
+target/
+*.class
+*.jar
+*.war
+.gradle/
+.venv/
+venv/
+env/
+__pycache__/
+*.pyc
