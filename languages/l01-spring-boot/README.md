@@ -26,11 +26,11 @@ Create `pom.xml` in the root of `languages/l01-spring-boot/starter/`:
         <relativePath/> <!-- lookup parent from repository -->
     </parent>
     
-    <groupId>org.dpworld</groupId>
+    <groupId>org.learning</groupId>
     <artifactId>bookstore-api</artifactId>
     <version>1.0.0</version>
     <name>bookstore-api</name>
-    <description>DP World Bookstore REST API Laboratory</description>
+    <description>Enterprise Bookstore REST API Laboratory</description>
     
     <properties>
         <java.version>17</java.version>
@@ -129,9 +129,9 @@ spring.jpa.properties.hibernate.format_sql=true
 ### Step 3: Designing the Domain Entity
 Create the `Book` data model. The entity must have annotations mapping it to a database table and validating inputs.
 
-Create `src/main/java/org/dpworld/bookstore/model/Book.java`:
+Create `src/main/java/org/learning/bookstore/model/Book.java`:
 ```java
-package org.dpworld.bookstore.model;
+package org.learning.bookstore.model;
 
 import jakarta.persistence.*;
 import jakarta.validation.constraints.*;
@@ -184,11 +184,11 @@ public class Book {
 ### Step 4: Writing the JPA Repository
 Create an interface extending `JpaRepository` to manage database operations.
 
-Create `src/main/java/org/dpworld/bookstore/repository/BookRepository.java`:
+Create `src/main/java/org/learning/bookstore/repository/BookRepository.java`:
 ```java
-package org.dpworld.bookstore.repository;
+package org.learning.bookstore.repository;
 
-import org.dpworld.bookstore.model.Book;
+import org.learning.bookstore.model.Book;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 import java.util.Optional;
@@ -205,9 +205,9 @@ public interface BookRepository extends JpaRepository<Book, Long> {
 ### Step 5: Implementing Custom Exceptions
 When validation or check exceptions occur, we throw specialized class models to represent conflict errors.
 
-Create `src/main/java/org/dpworld/bookstore/exception/DuplicateIsbnException.java`:
+Create `src/main/java/org/learning/bookstore/exception/DuplicateIsbnException.java`:
 ```java
-package org.dpworld.bookstore.exception;
+package org.learning.bookstore.exception;
 
 public class DuplicateIsbnException extends RuntimeException {
     public DuplicateIsbnException(String message) {
@@ -216,9 +216,9 @@ public class DuplicateIsbnException extends RuntimeException {
 }
 ```
 
-Create `src/main/java/org/dpworld/bookstore/exception/ResourceNotFoundException.java`:
+Create `src/main/java/org/learning/bookstore/exception/ResourceNotFoundException.java`:
 ```java
-package org.dpworld.bookstore.exception;
+package org.learning.bookstore.exception;
 
 public class ResourceNotFoundException extends RuntimeException {
     public ResourceNotFoundException(String message) {
@@ -232,14 +232,14 @@ public class ResourceNotFoundException extends RuntimeException {
 ### Step 6: Coding the Service Layer
 The service coordinates data transactions and isolates core business logic validations.
 
-Create `src/main/java/org/dpworld/bookstore/service/BookService.java`:
+Create `src/main/java/org/learning/bookstore/service/BookService.java`:
 ```java
-package org.dpworld.bookstore.service;
+package org.learning.bookstore.service;
 
-import org.dpworld.bookstore.model.Book;
-import org.dpworld.bookstore.repository.BookRepository;
-import org.dpworld.bookstore.exception.DuplicateIsbnException;
-import org.dpworld.bookstore.exception.ResourceNotFoundException;
+import org.learning.bookstore.model.Book;
+import org.learning.bookstore.repository.BookRepository;
+import org.learning.bookstore.exception.DuplicateIsbnException;
+import org.learning.bookstore.exception.ResourceNotFoundException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
@@ -279,13 +279,13 @@ public class BookService {
 ### Step 7: Configuring REST Controller Routing
 Set up the HTTP communication routes. We validate payloads using `@Valid`.
 
-Create `src/main/java/org/dpworld/bookstore/controller/BookController.java`:
+Create `src/main/java/org/learning/bookstore/controller/BookController.java`:
 ```java
-package org.dpworld.bookstore.controller;
+package org.learning.bookstore.controller;
 
 import jakarta.validation.Valid;
-import org.dpworld.bookstore.model.Book;
-import org.dpworld.bookstore.service.BookService;
+import org.learning.bookstore.model.Book;
+import org.learning.bookstore.service.BookService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -323,9 +323,9 @@ public class BookController {
 ### Step 8: Creating Global Interceptors for Custom Errors
 Map our business validation and checking exceptions cleanly into JSON output payloads.
 
-Create `src/main/java/org/dpworld/bookstore/exception/GlobalExceptionHandler.java`:
+Create `src/main/java/org/learning/bookstore/exception/GlobalExceptionHandler.java`:
 ```java
-package org.dpworld.bookstore.exception;
+package org.learning.bookstore.exception;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -384,13 +384,13 @@ public class GlobalExceptionHandler {
 ### Step 9: Writing and Executing the Integration Test Suite
 To verify the application end-to-end, write an integration test suite.
 
-Create `src/test/java/org/dpworld/bookstore/BookstoreApplicationTests.java`:
+Create `src/test/java/org/learning/bookstore/BookstoreApplicationTests.java`:
 ```java
-package org.dpworld.bookstore;
+package org.learning.bookstore;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.dpworld.bookstore.model.Book;
-import org.dpworld.bookstore.repository.BookRepository;
+import org.learning.bookstore.model.Book;
+import org.learning.bookstore.repository.BookRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;

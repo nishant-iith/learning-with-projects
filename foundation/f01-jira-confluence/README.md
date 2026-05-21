@@ -1,6 +1,6 @@
 # F-01: Collaboration Tools (Jira & Confluence)
 
-Enterprise engineering teams operate as a unified machine. To coordinate requirements, track development progress, and preserve system knowledge, companies like DP World rely on **Jira** and **Confluence** (Atlassian Suite). This handbook will show you how to utilize these collaboration platforms effectively to drive engineering clarity.
+Enterprise engineering teams operate as a unified machine. To coordinate requirements, track development progress, and preserve system knowledge, modern enterprise software organizations rely on **Jira** and **Confluence** (Atlassian Suite). This handbook will show you how to utilize these collaboration platforms effectively to drive engineering clarity.
 
 ---
 

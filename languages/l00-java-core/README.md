@@ -1,6 +1,6 @@
 # L-00: Java Core Fundamentals (CLI Task Manager)
 
-Welcome to Phase 2: Language Deep-Dives! Java is a powerful, statically-typed, object-oriented language that serves as the backbone of DP World's high-scale backend ecosystem. In this handbook, you will master the core foundations of Java—from memory mechanics to advanced collections—and design a clean, command-line **Task Manager** from scratch.
+Welcome to Phase 2: Language Deep-Dives! Java is a powerful, statically-typed, object-oriented language that serves as the backbone of high-scale enterprise backend ecosystems. In this handbook, you will master the core foundations of Java—from memory mechanics to advanced collections—and design a clean, command-line **Task Manager** from scratch.
 
 ---
 
@@ -144,7 +144,7 @@ To practice clean SOLID design, separate your concerns into distinct classes:
 4.  `App`: The CLI interactive entry point.
 
 ```
-src/main/java/org/dpworld/
+src/main/java/org/learning/
 ├── model/
 │   └── Task.java
 ├── service/

@@ -29,7 +29,7 @@ public class User {
 
     // Responsibility 2: Notification formatting
     public String formatWelcomeEmail() {
-        return "Hello " + name + ", welcome to DP World!";
+        return "Hello " + name + ", welcome to our platform!";
     }
 }
 ```

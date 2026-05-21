@@ -1,6 +1,6 @@
 # F-02: Git Mastery Workshop
 
-Welcome to your first hands-on engineering lab! Version control is the heartbeat of collaborative software development. In this workshop, you will move beyond basic `git add` and `git commit` commands to master the advanced version control mechanisms used by elite engineering teams at companies like DP World.
+Welcome to your first hands-on engineering lab! Version control is the heartbeat of collaborative software development. In this workshop, you will move beyond basic `git add` and `git commit` commands to master the advanced version control mechanisms used by elite engineering teams at top-tier software companies.
 
 ---
 

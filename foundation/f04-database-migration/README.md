@@ -1,6 +1,6 @@
 # F-04: Database Migration Engine (Mini-Flyway)
 
-In an enterprise environment (like DP World), you never run raw `CREATE TABLE` or `ALTER TABLE` queries directly on production databases. Instead, database schema changes are managed as **Versioned Migrations** that execute automatically within your CI/CD pipeline. 
+In an enterprise environment (at scale), you never run raw `CREATE TABLE` or `ALTER TABLE` queries directly on production databases. Instead, database schema changes are managed as **Versioned Migrations** that execute automatically within your CI/CD pipeline. 
 
 In this hands-on project, you will build a lightweight **Database Migration Engine** (similar to **Flyway** or **Liquibase**) from scratch using Python or Node.js.
 

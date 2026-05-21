@@ -19,7 +19,7 @@ Create `pom.xml` in the root of `languages/l02-custom-di/starter/`:
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
     
-    <groupId>org.dpworld</groupId>
+    <groupId>org.learning</groupId>
     <artifactId>mini-ioc-container</artifactId>
     <version>1.0.0</version>
     <name>mini-ioc-container</name>
@@ -52,9 +52,9 @@ Create `pom.xml` in the root of `languages/l02-custom-di/starter/`:
 ### Step 2: Defining Custom Annotations
 Create the custom annotations that instruct our scanner which classes to manage and which fields to inject.
 
-Create `src/main/java/org/dpworld/ioc/annotation/Component.java`:
+Create `src/main/java/org/learning/ioc/annotation/Component.java`:
 ```java
-package org.dpworld.ioc.annotation;
+package org.learning.ioc.annotation;
 
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
@@ -67,9 +67,9 @@ public @interface Component {
 }
 ```
 
-Create `src/main/java/org/dpworld/ioc/annotation/Autowired.java`:
+Create `src/main/java/org/learning/ioc/annotation/Autowired.java`:
 ```java
-package org.dpworld.ioc.annotation;
+package org.learning.ioc.annotation;
 
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
@@ -87,9 +87,9 @@ public @interface Autowired {
 ### Step 3: Defining the Context Lookup Interface
 The context interface provides a standard retrieval lookup.
 
-Create `src/main/java/org/dpworld/ioc/context/ApplicationContext.java`:
+Create `src/main/java/org/learning/ioc/context/ApplicationContext.java`:
 ```java
-package org.dpworld.ioc.context;
+package org.learning.ioc.context;
 
 public interface ApplicationContext {
     /**
@@ -104,9 +104,9 @@ public interface ApplicationContext {
 ### Step 4: Implementing the Classpath Directory Scanner
 The scanner traverses the local compiled directory, transforms package mappings into directory resources, and loads `.class` definitions dynamically.
 
-Create `src/main/java/org/dpworld/ioc/scanner/ClasspathScanner.java`:
+Create `src/main/java/org/learning/ioc/scanner/ClasspathScanner.java`:
 ```java
-package org.dpworld.ioc.scanner;
+package org.learning.ioc.scanner;
 
 import java.io.File;
 import java.net.URL;
@@ -118,7 +118,7 @@ public class ClasspathScanner {
     public static List<Class<?>> scan(String basePackage) {
         List<Class<?>> classes = new ArrayList<>();
         try {
-            // Transform package dot notation: "org.dpworld.app" -> "org/dpworld/app"
+            // Transform package dot notation: "org.learning.app" -> "org/learning/app"
             String path = basePackage.replace('.', '/');
             ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
             URL resource = classLoader.getResource(path);
@@ -160,13 +160,13 @@ public class ClasspathScanner {
 ### Step 5: Implementing Instantiation & Bean Registry
 The core context class processes scanned definitions, checks for `@Component`, and calls no-argument constructors via reflection.
 
-Create `src/main/java/org/dpworld/ioc/context/AnnotationConfigContext.java`:
+Create `src/main/java/org/learning/ioc/context/AnnotationConfigContext.java`:
 ```java
-package org.dpworld.ioc.context;
+package org.learning.ioc.context;
 
-import org.dpworld.ioc.annotation.Component;
-import org.dpworld.ioc.annotation.Autowired;
-import org.dpworld.ioc.scanner.ClasspathScanner;
+import org.learning.ioc.annotation.Component;
+import org.learning.ioc.annotation.Autowired;
+import org.learning.ioc.scanner.ClasspathScanner;
 import java.lang.reflect.Field;
 import java.util.*;
 
@@ -209,7 +209,7 @@ public class AnnotationConfigContext implements ApplicationContext {
 ### Step 6: Implementing Dependency Injection (Wiring)
 Add the low-level wiring loop inside `AnnotationConfigContext.java`. It checks fields for `@Autowired`, gets active beans from the registry, overrides private visibility locks, and injects them.
 
-Continue editing `src/main/java/org/dpworld/ioc/context/AnnotationConfigContext.java`:
+Continue editing `src/main/java/org/learning/ioc/context/AnnotationConfigContext.java`:
 ```java
     private void injectDependencies(Object targetInstance) throws IllegalAccessException {
         Class<?> clazz = targetInstance.getClass();
@@ -249,11 +249,11 @@ Continue editing `src/main/java/org/dpworld/ioc/context/AnnotationConfigContext.
 ### Step 7: Creating a Mock Application to Verify Integration
 Create a mock application structure to verify our container.
 
-Create `src/main/java/org/dpworld/ioc/mock/MockRepository.java`:
+Create `src/main/java/org/learning/ioc/mock/MockRepository.java`:
 ```java
-package org.dpworld.ioc.mock;
+package org.learning.ioc.mock;
 
-import org.dpworld.ioc.annotation.Component;
+import org.learning.ioc.annotation.Component;
 
 @Component
 public class MockRepository {
@@ -263,12 +263,12 @@ public class MockRepository {
 }
 ```
 
-Create `src/main/java/org/dpworld/ioc/mock/MockService.java`:
+Create `src/main/java/org/learning/ioc/mock/MockService.java`:
 ```java
-package org.dpworld.ioc.mock;
+package org.learning.ioc.mock;
 
-import org.dpworld.ioc.annotation.Component;
-import org.dpworld.ioc.annotation.Autowired;
+import org.learning.ioc.annotation.Component;
+import org.learning.ioc.annotation.Autowired;
 
 @Component
 public class MockService {
@@ -281,12 +281,12 @@ public class MockService {
 }
 ```
 
-Create `src/main/java/org/dpworld/ioc/mock/MockController.java`:
+Create `src/main/java/org/learning/ioc/mock/MockController.java`:
 ```java
-package org.dpworld.ioc.mock;
+package org.learning.ioc.mock;
 
-import org.dpworld.ioc.annotation.Component;
-import org.dpworld.ioc.annotation.Autowired;
+import org.learning.ioc.annotation.Component;
+import org.learning.ioc.annotation.Autowired;
 
 @Component
 public class MockController {
@@ -304,14 +304,14 @@ public class MockController {
 ### Step 8: Writing and Executing the Verification Test Suite
 Create a comprehensive test suite to verify the container's behavior.
 
-Create `src/test/java/org/dpworld/ioc/ContainerTests.java`:
+Create `src/test/java/org/learning/ioc/ContainerTests.java`:
 ```java
-package org.dpworld.ioc;
+package org.learning.ioc;
 
-import org.dpworld.ioc.context.AnnotationConfigContext;
-import org.dpworld.ioc.context.ApplicationContext;
-import org.dpworld.ioc.mock.MockController;
-import org.dpworld.ioc.mock.MockService;
+import org.learning.ioc.context.AnnotationConfigContext;
+import org.learning.ioc.context.ApplicationContext;
+import org.learning.ioc.mock.MockController;
+import org.learning.ioc.mock.MockService;
 import org.junit.jupiter.api.Test;
 import java.util.NoSuchElementException;
 
@@ -321,7 +321,7 @@ public class ContainerTests {
 
     @Test
     void shouldScanAndInstantiateBeans() {
-        ApplicationContext context = new AnnotationConfigContext("org.dpworld.ioc.mock");
+        ApplicationContext context = new AnnotationConfigContext("org.learning.ioc.mock");
         
         MockController controller = context.getBean(MockController.class);
         assertNotNull(controller, "Bean should be instantiated and registered");
@@ -329,7 +329,7 @@ public class ContainerTests {
 
     @Test
     void shouldRegisterBeansAsSingletons() {
-        ApplicationContext context = new AnnotationConfigContext("org.dpworld.ioc.mock");
+        ApplicationContext context = new AnnotationConfigContext("org.learning.ioc.mock");
         
         MockService service1 = context.getBean(MockService.class);
         MockService service2 = context.getBean(MockService.class);
@@ -339,7 +339,7 @@ public class ContainerTests {
 
     @Test
     void shouldInjectDependenciesRecursively() {
-        ApplicationContext context = new AnnotationConfigContext("org.dpworld.ioc.mock");
+        ApplicationContext context = new AnnotationConfigContext("org.learning.ioc.mock");
         
         MockController controller = context.getBean(MockController.class);
         
@@ -350,7 +350,7 @@ public class ContainerTests {
 
     @Test
     void shouldThrowOnMissingBeanRequest() {
-        ApplicationContext context = new AnnotationConfigContext("org.dpworld.ioc.mock");
+        ApplicationContext context = new AnnotationConfigContext("org.learning.ioc.mock");
         
         assertThrows(NoSuchElementException.class, () -> {
             context.getBean(String.class); // Request an unmanaged type
