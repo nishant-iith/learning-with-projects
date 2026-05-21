@@ -1,65 +1,135 @@
 # L-01: Java Spring Boot Essentials (Bookstore REST API)
 
-Spring Boot is the premier corporate framework for building production-grade, highly-scalable, and secure enterprise microservices in Java. This handbook is a deep-dive, comprehensive guide to the inner workings of Spring Boot. You will master the physics of the **Spring Application Context**, the lifecycle of **Beans**, the mechanics of **Dependency Injection (DI)**, and design a fully-tested **Bookstore REST API** backed by PostgreSQL.
+Spring Boot is the premier corporate framework for building production-grade, highly-scalable, and secure enterprise microservices in Java. This step-by-step study guide walks you through bootstrap setups, database integrations, layered logic design, and test validation.
 
 ---
 
-## 1. Deep-Dive: Spring Boot Core & Context Lifecycles
+## 🛠️ Step-by-Step Implementation Guide
 
-Understanding what happens when you press "Run" is what separates junior coders from senior engineers.
+---
 
-### A. Annotations Decoded: What is `@SpringBootApplication`?
-The entry point of any Spring Boot application is annotated with `@SpringBootApplication`. This is not a single annotation, but a **meta-annotation** composed of three core configurations:
+### Step 1: Project Bootstrapping & Dependencies
+To start, configure your Maven build file (`pom.xml`) with the core starters for Web, Data JPA, PostgreSQL, and Validation.
 
-```java
-@Target(ElementType.TYPE)
-@Retention(RetentionPolicy.RUNTIME)
-@Documented
-@Inherited
-@SpringBootConfiguration      // 1. Declares this class as a source of bean definitions
-@EnableAutoConfiguration       // 2. Guesses and configures beans based on classpath dependencies
-@ComponentScan                // 3. Scans for annotated component beans in the current package and subpackages
-public @interface SpringBootApplication { ... }
+Create `pom.xml` in the root of `languages/l01-spring-boot/starter/`:
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>3.2.5</version>
+        <relativePath/> <!-- lookup parent from repository -->
+    </parent>
+    
+    <groupId>org.dpworld</groupId>
+    <artifactId>bookstore-api</artifactId>
+    <version>1.0.0</version>
+    <name>bookstore-api</name>
+    <description>DP World Bookstore REST API Laboratory</description>
+    
+    <properties>
+        <java.version>17</java.version>
+    </properties>
+    
+    <dependencies>
+        <!-- Core Web starter for REST APIs -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+        
+        <!-- JPA starter using Hibernate ORM -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-jpa</artifactId>
+        </dependency>
+        
+        <!-- Validation starter for JSR-380 input checks -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-validation</artifactId>
+        </dependency>
+        
+        <!-- PostgreSQL driver -->
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+        
+        <!-- Testing starter (JUnit 5, Mockito, AssertJ, MockMvc) -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+    
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
+</project>
 ```
 
-1.  **`@SpringBootConfiguration`**: A specialized form of `@Configuration` that designates the class as a configuration source. It allows you to declare custom beans using the `@Bean` annotation inside methods.
-2.  **`@EnableAutoConfiguration`**: The "magic" engine. It tells Spring Boot to look at the libraries present on your classpath (defined in `pom.xml`). For example, if `postgresql-driver` and `spring-boot-starter-data-jpa` are found, it automatically instantiates and configures a PostgreSQL `DataSource`, `EntityManagerFactory`, and `TransactionManager` without you writing a single line of boilerplate!
-3.  **`@ComponentScan`**: Directs Spring to scan the classpath starting from the package containing this class. It looks for classes annotated with `@Component`, `@Service`, `@Repository`, `@RestController`, and `@Configuration`, instantiates them, and registers them as **Beans** in the Application Context.
-
 ---
 
-### B. The Application Context & Bean Lifecycle
+### Step 2: Database Setup & Local Connection
+To run PostgreSQL locally and for free, create a `docker-compose.yml` file in your project starter root:
 
-The **Application Context** is Spring's registry of all active objects (Beans). The lifecycle of a bean goes through a strict sequence managed by the container:
+```yaml
+version: '3.8'
 
-```mermaid
-graph TD
-    classDef default fill:#ffffff,stroke:#333333,stroke-width:1px,color:#333333;
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: dpw-bookstore-db
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: bookstore_user
+      POSTGRES_PASSWORD: bookstore_password
+      POSTGRES_DB: bookstore_db
+    volumes:
+      - pgdata:/var/lib/postgresql/data
 
-    Start["1. Scan & Load Class Definitions"] --> Instantiate["2. Instantiate Bean (Constructor Invocation)"]
-    Instantiate --> Populate["3. Populate Properties (Field/Setter Injection)"]
-    Populate --> Aware["4. Aware Interfaces (BeanNameAware, BeanFactoryAware)"]
-    Aware --> PreInit["5. BeanPostProcessor - Pre-Initialization"]
-    PreInit --> Init["6. Custom Init (@PostConstruct or InitializingBean)"]
-    Init --> PostInit["7. BeanPostProcessor - Post-Initialization (AOP Proxies created)"]
-    PostInit --> Ready["8. Bean Ready for Use"]
-    Ready --> Destroy["9. Pre-Destroy (@PreDestroy or DisposableBean)"]
+volumes:
+  pgdata:
 ```
 
-*   **BeanPostProcessors**: These interceptors modify bean instances before and after initialization. For example, Spring uses them to wrap your repository or service beans in **AOP (Aspect-Oriented Programming) Proxies** to automatically manage database transactions (`@Transactional`).
-*   **Scopes**: Beans can have different lifecycles:
-    *   `Singleton` (Default): Only **one** instance of the bean is created per Application Context. It is shared among all threads.
-    *   `Prototype`: A **new** instance is created every time the bean is requested.
-    *   `Request` / `Session` (Web apps): A new instance is created per HTTP request or session.
+Now, configure Spring Boot to connect to this database by creating `src/main/resources/application.properties`:
+
+```properties
+# Spring Boot DB Configuration
+spring.datasource.url=jdbc:postgresql://localhost:5432/bookstore_db
+spring.datasource.username=bookstore_user
+spring.datasource.password=bookstore_password
+spring.datasource.driver-class-name=org.postgresql.Driver
+
+# JPA/Hibernate Configurations
+spring.jpa.database-platform=org.hibernate.dialect.PostgreSQLDialect
+spring.jpa.hibernate.ddl-auto=update
+spring.jpa.show-sql=true
+spring.jpa.properties.hibernate.format_sql=true
+```
+*   `spring.jpa.hibernate.ddl-auto=update`: Automatically updates database schemas to match entity code changes.
+*   `spring.jpa.show-sql=true`: Prints SQL commands in the console for analysis.
 
 ---
 
-## 2. Coding Patterns: Layered Clean Architecture In-Depth
+### Step 3: Designing the Domain Entity
+Create the `Book` data model. The entity must have annotations mapping it to a database table and validating inputs.
 
-To prevent architectural decay, we partition our code into specialized layers. Here is the concrete, code-level implementation blueprint of each layer:
-
-### A. The Domain Model (Entity)
-The **Entity** is a plain Java class mapped directly to a database table row:
+Create `src/main/java/org/dpworld/bookstore/model/Book.java`:
 ```java
 package org.dpworld.bookstore.model;
 
@@ -88,7 +158,7 @@ public class Book {
     @Column(nullable = false)
     private Double price;
 
-    // Constructors, Getters, Setters (Ensure a no-arg constructor is present for JPA!)
+    // Standard constructor requirements
     public Book() {}
 
     public Book(String title, String isbn, Double price) {
@@ -98,11 +168,23 @@ public class Book {
     }
 
     // Getters and Setters...
+    public Long getId() { return id; }
+    public void setId(Long id) { this.id = id; }
+    public String getTitle() { return title; }
+    public void setTitle(String title) { this.title = title; }
+    public String getIsbn() { return isbn; }
+    public void setIsbn(String isbn) { this.isbn = isbn; }
+    public Double getPrice() { return price; }
+    public void setPrice(Double price) { this.price = price; }
 }
 ```
 
-### B. The Repository Layer (JPA Access)
-The Repository interface handles direct database communications. By extending `JpaRepository`, Spring automatically implements standard CRUD operations:
+---
+
+### Step 4: Writing the JPA Repository
+Create an interface extending `JpaRepository` to manage database operations.
+
+Create `src/main/java/org/dpworld/bookstore/repository/BookRepository.java`:
 ```java
 package org.dpworld.bookstore.repository;
 
@@ -113,14 +195,44 @@ import java.util.Optional;
 
 @Repository
 public interface BookRepository extends JpaRepository<Book, Long> {
-    // Dynamic Query Derivation: Spring parses this name and generates:
-    // SELECT * FROM books WHERE isbn = ?
+    // Derived query: checks database for duplicates using ISBN
     Optional<Book> findByIsbn(String isbn);
 }
 ```
 
-### C. The Service Layer (Business Logic & Transactions)
-The Service class implements the business rules and marks operations as transactional:
+---
+
+### Step 5: Implementing Custom Exceptions
+When validation or check exceptions occur, we throw specialized class models to represent conflict errors.
+
+Create `src/main/java/org/dpworld/bookstore/exception/DuplicateIsbnException.java`:
+```java
+package org.dpworld.bookstore.exception;
+
+public class DuplicateIsbnException extends RuntimeException {
+    public DuplicateIsbnException(String message) {
+        super(message);
+    }
+}
+```
+
+Create `src/main/java/org/dpworld/bookstore/exception/ResourceNotFoundException.java`:
+```java
+package org.dpworld.bookstore.exception;
+
+public class ResourceNotFoundException extends RuntimeException {
+    public ResourceNotFoundException(String message) {
+        super(message);
+    }
+}
+```
+
+---
+
+### Step 6: Coding the Service Layer
+The service coordinates data transactions and isolates core business logic validations.
+
+Create `src/main/java/org/dpworld/bookstore/service/BookService.java`:
 ```java
 package org.dpworld.bookstore.service;
 
@@ -136,7 +248,7 @@ import java.util.List;
 public class BookService {
     private final BookRepository bookRepository;
 
-    // Constructor Injection (Enables clean Mockito testing without Spring)
+    // Constructor Injection
     public BookService(BookRepository bookRepository) {
         this.bookRepository = bookRepository;
     }
@@ -162,8 +274,12 @@ public class BookService {
 }
 ```
 
-### D. The Controller Layer (REST Endpoints)
-The REST Controller handles serialization/deserialization, input validation, and routes requests to the Service layer:
+---
+
+### Step 7: Configuring REST Controller Routing
+Set up the HTTP communication routes. We validate payloads using `@Valid`.
+
+Create `src/main/java/org/dpworld/bookstore/controller/BookController.java`:
 ```java
 package org.dpworld.bookstore.controller;
 
@@ -204,10 +320,10 @@ public class BookController {
 
 ---
 
-## 3. Global Exception Handling & Validation Errors
+### Step 8: Creating Global Interceptors for Custom Errors
+Map our business validation and checking exceptions cleanly into JSON output payloads.
 
-When an validation constraint fails, or when a service throws an exception (like `DuplicateIsbnException`), we must return a clean, structured JSON format instead of a raw stack trace.
-
+Create `src/main/java/org/dpworld/bookstore/exception/GlobalExceptionHandler.java`:
 ```java
 package org.dpworld.bookstore.exception;
 
@@ -220,7 +336,7 @@ import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
 
-@ControllerAdvice // Intercepts exceptions thrown across all REST controllers
+@ControllerAdvice
 public class GlobalExceptionHandler {
 
     @ExceptionHandler(DuplicateIsbnException.class)
@@ -233,8 +349,18 @@ public class GlobalExceptionHandler {
         return new ResponseEntity<>(body, HttpStatus.CONFLICT);
     }
 
+    @ExceptionHandler(ResourceNotFoundException.class)
+    public ResponseEntity<Object> handleNotFound(ResourceNotFoundException ex) {
+        Map<String, Object> body = new HashMap<>();
+        body.put("timestamp", LocalDateTime.now());
+        body.put("status", HttpStatus.NOT_FOUND.value());
+        body.put("error", "Not Found");
+        body.put("message", ex.getMessage());
+        return new ResponseEntity<>(body, HttpStatus.NOT_FOUND);
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ResponseEntity<Object> handleValidationExceptions(MethodArgumentNotValidException ex) {
+    public ResponseEntity<Object> handleValidation(MethodArgumentNotValidException ex) {
         Map<String, Object> body = new HashMap<>();
         body.put("timestamp", LocalDateTime.now());
         body.put("status", HttpStatus.BAD_REQUEST.value());
@@ -255,10 +381,10 @@ public class GlobalExceptionHandler {
 
 ---
 
-## 🔧 TDD MockMvc Testing Specification
+### Step 9: Writing and Executing the Integration Test Suite
+To verify the application end-to-end, write an integration test suite.
 
-To practice strict TDD, your test suite must execute requests through the web layer using `MockMvc` without instantiating a real server port. Here is an example of an integration test structure you will find in your starter project:
-
+Create `src/test/java/org/dpworld/bookstore/BookstoreApplicationTests.java`:
 ```java
 package org.dpworld.bookstore;
 
@@ -287,11 +413,11 @@ public class BookstoreApplicationTests {
     private BookRepository bookRepository;
 
     @Autowired
-    private ObjectMapper objectMapper; // Serializes objects to JSON
+    private ObjectMapper objectMapper;
 
     @BeforeEach
     void setUp() {
-        bookRepository.deleteAll(); // Start each test in a clean database state
+        bookRepository.deleteAll(); // Clear state before each test run
     }
 
     @Test
@@ -303,29 +429,28 @@ public class BookstoreApplicationTests {
                 .content(objectMapper.writeValueAsString(book)))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.id").exists())
-                .andExpect(jsonPath("$.title").value("Effective Java"))
-                .andExpect(jsonPath("$.isbn").value("978-0134685991"));
+                .andExpect(jsonPath("$.title").value("Effective Java"));
     }
 
     @Test
-    void shouldReturnBadRequestOnInvalidInput() throws Exception {
-        Book invalidBook = new Book("", "invalid-isbn", -10.00); // Empty title, bad ISBN, negative price
+    void shouldReturnConflictOnDuplicateIsbn() throws Exception {
+        Book book1 = new Book("Clean Code", "978-0132350884", 40.00);
+        bookRepository.save(book1); // Persist baseline
+
+        Book book2 = new Book("Clean Code (Copy)", "978-0132350884", 42.00);
 
         mockMvc.perform(post("/api/books")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(objectMapper.writeValueAsString(invalidBook)))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.validationErrors.title").exists())
-                .andExpect(jsonPath("$.validationErrors.isbn").exists())
-                .andExpect(jsonPath("$.validationErrors.price").exists());
+                .content(objectMapper.writeValueAsString(book2)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error").value("Conflict"))
+                .andExpect(jsonPath("$.message").value("ISBN 978-0132350884 already exists."));
     }
 }
 ```
 
----
-
-## 🚀 Post-Lab Reflection Questions
-- [x] What is the difference between a Bean and a standard Java Object?
-- [x] How does `@EnableAutoConfiguration` dynamically configure your application data layer?
-- [x] Why should field injection (`@Autowired` on variables) be avoided in favor of Constructor Injection?
-- [x] What is the exact sequence of the Bean Lifecycle from scanning to destruction?
+To run this test suite using Maven CLI:
+```bash
+mvn test
+```
+This compilation, bootstrapping, and test suite execution verifies that your bookstore application functions as specified!

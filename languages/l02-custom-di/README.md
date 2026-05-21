@@ -1,107 +1,82 @@
 # L-02: Custom Dependency Injection Container (Mini-Spring IoC)
 
-Spring Boot makes building applications feel like magic. Annotating a class with `@Component` and another field with `@Autowired` makes dependencies appear out of thin air. In this advanced hands-on lab, you will write a fully functional **Dependency Injection (DI) & Inversion of Control (IoC) Container** from scratch in raw Java using the **Reflection API**. 
-
-By building this container, you will completely demystify the internal physics of the Spring Framework, mastering how classpaths are scanned, how annotations are read, and how objects are instantiated and wired dynamically at runtime.
+Spring Boot makes building applications feel like magic. Annotating a class with `@Component` and another field with `@Autowired` makes dependencies appear out of thin air. This step-by-step study guide walks you through building your own **Inversion of Control (IoC) & Dependency Injection (DI) Container** from scratch in raw Java using the **Reflection API**.
 
 ---
 
-## 1. The Core Architecture of an IoC Container
-
-An Inversion of Control container manages the lifecycles, configurations, and dependency resolution of application components. The operation of our custom `ApplicationContext` goes through three strict phases during initialization:
-
-```mermaid
-graph TD
-    classDef default fill:#ffffff,stroke:#333333,stroke-width:1px,color:#333333;
-
-    Start["1. Initialize Container with Base Package"] --> Scan["Phase A: Classpath Scanning<br>(Find all classes annotated with @Component)"]
-    Scan --> Instantiate["Phase B: Instantiation<br>(Create instances of scanned classes using reflection)"]
-    Instantiate --> Wire["Phase C: Dependency Injection<br>(Inspect fields, find @Autowired, inject active beans)"]
-    Wire --> Ready["2. Container Ready (getBean() retrieves fully wired instances)"]
-```
-
-*   **Phase A: Classpath Scanning**: The container is initialized with a base package name (e.g. `org.dpworld.app`). It scans the local filesystem, finds all compiled class files under that package directory, loads them dynamically, and checks if they are marked with our custom `@Component` annotation.
-*   **Phase B: Instantiation**: For every scanned class, the container invokes its constructor using reflection and registers the resulting object (the "Bean") inside an in-memory map: `Map<Class<?>, Object> beanRegistry`.
-*   **Phase C: Dependency Injection (Wiring)**: The container inspects the fields of every registered bean. If a field is annotated with `@Autowired`, it looks up the corresponding instance from the `beanRegistry` and injects it directly into the field.
+## 🛠️ Step-by-Step Implementation Guide
 
 ---
 
-## 2. Java Reflection API Fundamentals
+### Step 1: Project Setup (Maven Configuration)
+Create a raw Java project structure without Spring dependencies. We only need the JUnit test starters.
 
-To write this container, you must master the **Java Reflection API** (`java.lang.reflect`). Reflection allows a program to inspect and manipulate its own structures (classes, fields, methods, constructors) dynamically at runtime.
-
-### A. Dynamic Class Loading
-To convert a string filepath into an inspectable Java Class object:
-```java
-Class<?> clazz = Class.forName("org.dpworld.app.service.BookService");
-```
-
-### B. Inspecting Annotations
-You can inspect if a class or field is marked with a specific annotation:
-```java
-if (clazz.isAnnotationPresent(Component.class)) {
-    System.out.println(clazz.getSimpleName() + " is marked as a Component!");
-}
-```
-
-### C. Dynamic Instantiation
-To create an instance of a class dynamically using its default, no-argument constructor:
-```java
-Constructor<?> constructor = clazz.getDeclaredConstructor();
-constructor.setAccessible(true); // Allows instantiating private/protected constructors!
-Object instance = constructor.newInstance();
-```
-
-### D. Dynamic Field Manipulation (Wiring)
-To inject a dependency into a field, even if that field is declared as `private`:
-```java
-Field field = clazz.getDeclaredField("bookRepository");
-field.setAccessible(true); // bypasses private visibility locks!
-
-// Inject 'repositoryInstance' into 'serviceInstance'
-field.set(serviceInstance, repositoryInstance);
+Create `pom.xml` in the root of `languages/l02-custom-di/starter/`:
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    
+    <groupId>org.dpworld</groupId>
+    <artifactId>mini-ioc-container</artifactId>
+    <version>1.0.0</version>
+    <name>mini-ioc-container</name>
+    <description>Custom Dependency Injection Laboratory</description>
+    
+    <properties>
+        <java.version>17</java.version>
+    </properties>
+    
+    <dependencies>
+        <!-- JUnit 5 Engine for unit testing our container -->
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-api</artifactId>
+            <version>5.10.2</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-engine</artifactId>
+            <version>5.10.2</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>
 ```
 
 ---
 
-## 3. Designing Our Mini-Spring: The Code Blueprint
+### Step 2: Defining Custom Annotations
+Create the custom annotations that instruct our scanner which classes to manage and which fields to inject.
 
-We will design our custom container with five distinct components:
-
-```
-src/main/java/org/dpworld/ioc/
-├── annotation/
-│   ├── Component.java       // Custom class annotation
-│   └── Autowired.java       // Custom field annotation
-├── context/
-│   ├── ApplicationContext.java      // Interface
-│   └── AnnotationConfigContext.java // Core Engine implementation
-└── scanner/
-    └── ClasspathScanner.java        // Local directory class discoverer
-```
-
----
-
-### A. Custom Annotations Setup
-Our annotations must be discoverable at **runtime**, so we declare them with a `RUNTIME` retention policy:
-
+Create `src/main/java/org/dpworld/ioc/annotation/Component.java`:
 ```java
 package org.dpworld.ioc.annotation;
 
-import java.lang.annotation.*;
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
 
-@Target(ElementType.TYPE) // Can only be applied to Classes
-@Retention(RetentionPolicy.RUNTIME) // Must be preserved at runtime
+@Target(ElementType.TYPE) // Applicable only to classes, interfaces, or enums
+@Retention(RetentionPolicy.RUNTIME) // Preserved in binary compilation and inspectable at runtime
 public @interface Component {
 }
 ```
 
+Create `src/main/java/org/dpworld/ioc/annotation/Autowired.java`:
 ```java
 package org.dpworld.ioc.annotation;
 
-import java.lang.annotation.*;
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
 
-@Target(ElementType.FIELD) // Can only be applied to Fields
+@Target(ElementType.FIELD) // Applicable only to object variables/fields
 @Retention(RetentionPolicy.RUNTIME)
 public @interface Autowired {
 }
@@ -109,14 +84,16 @@ public @interface Autowired {
 
 ---
 
-### B. The ApplicationContext Interface
-This defines the public API of our container:
+### Step 3: Defining the Context Lookup Interface
+The context interface provides a standard retrieval lookup.
+
+Create `src/main/java/org/dpworld/ioc/context/ApplicationContext.java`:
 ```java
 package org.dpworld.ioc.context;
 
 public interface ApplicationContext {
     /**
-     * Retrieves the fully-wired active bean instance managed by the container.
+     * Look up and return the fully-wired singleton instance of a managed bean class.
      */
     <T> T getBean(Class<T> beanClass);
 }
@@ -124,8 +101,66 @@ public interface ApplicationContext {
 
 ---
 
-### C. The Core Container Engine (`AnnotationConfigContext`)
-Here is the core logic that orchestrates the three execution phases:
+### Step 4: Implementing the Classpath Directory Scanner
+The scanner traverses the local compiled directory, transforms package mappings into directory resources, and loads `.class` definitions dynamically.
+
+Create `src/main/java/org/dpworld/ioc/scanner/ClasspathScanner.java`:
+```java
+package org.dpworld.ioc.scanner;
+
+import java.io.File;
+import java.net.URL;
+import java.util.ArrayList;
+import java.util.List;
+
+public class ClasspathScanner {
+
+    public static List<Class<?>> scan(String basePackage) {
+        List<Class<?>> classes = new ArrayList<>();
+        try {
+            // Transform package dot notation: "org.dpworld.app" -> "org/dpworld/app"
+            String path = basePackage.replace('.', '/');
+            ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
+            URL resource = classLoader.getResource(path);
+            
+            if (resource == null) {
+                return classes; // Return empty if package resource path doesn't exist
+            }
+            
+            File directory = new File(resource.getFile());
+            if (directory.exists() && directory.isDirectory()) {
+                scanDirectory(directory, basePackage, classes);
+            }
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to scan classpath directory", e);
+        }
+        return classes;
+    }
+
+    private static void scanDirectory(File directory, String packageName, List<Class<?>> classes) throws ClassNotFoundException {
+        File[] files = directory.listFiles();
+        if (files == null) return;
+
+        for (File file : files) {
+            if (file.isDirectory()) {
+                // Recursively scan subfolders, updating package name
+                scanDirectory(file, packageName + "." + file.getName(), classes);
+            } else if (file.getName().endsWith(".class")) {
+                // Remove ".class" suffix to isolate name
+                String className = packageName + "." + file.getName().substring(0, file.getName().length() - 6);
+                classes.add(Class.forName(className)); // Load class dynamically
+            }
+        }
+    }
+}
+```
+
+---
+
+### Step 5: Implementing Instantiation & Bean Registry
+The core context class processes scanned definitions, checks for `@Component`, and calls no-argument constructors via reflection.
+
+Create `src/main/java/org/dpworld/ioc/context/AnnotationConfigContext.java`:
 ```java
 package org.dpworld.ioc.context;
 
@@ -136,7 +171,7 @@ import java.lang.reflect.Field;
 import java.util.*;
 
 public class AnnotationConfigContext implements ApplicationContext {
-    // Our bean registry maps Class types to active Object instances
+    // Bean registry maps the Class type to the instantiated Singleton Object
     private final Map<Class<?>, Object> beanRegistry = new HashMap<>();
 
     public AnnotationConfigContext(String basePackage) {
@@ -145,27 +180,37 @@ public class AnnotationConfigContext implements ApplicationContext {
 
     private void initialize(String basePackage) {
         try {
-            // Phase A: Classpath scanning
+            // Step 1: Scan package for compiled class files
             List<Class<?>> scannedClasses = ClasspathScanner.scan(basePackage);
 
-            // Phase B: Instantiation
+            // Step 2: Instantiation (Create Singleton instances for all Component beans)
             for (Class<?> clazz : scannedClasses) {
                 if (clazz.isAnnotationPresent(Component.class)) {
-                    Object instance = clazz.getDeclaredConstructor().newInstance();
+                    // Call default private or public constructor
+                    var constructor = clazz.getDeclaredConstructor();
+                    constructor.setAccessible(true); // Bypass visibility locks
+                    Object instance = constructor.newInstance();
                     beanRegistry.put(clazz, instance);
                 }
             }
 
-            // Phase C: Dependency Injection (Wiring)
+            // Step 3: Injection (Wire dependencies together)
             for (Object beanInstance : beanRegistry.values()) {
                 injectDependencies(beanInstance);
             }
-
         } catch (Exception e) {
-            throw new RuntimeException("Failed to initialize Dependency Injection Context", e);
+            throw new RuntimeException("DI Context Initialization Failed", e);
         }
     }
+```
 
+---
+
+### Step 6: Implementing Dependency Injection (Wiring)
+Add the low-level wiring loop inside `AnnotationConfigContext.java`. It checks fields for `@Autowired`, gets active beans from the registry, overrides private visibility locks, and injects them.
+
+Continue editing `src/main/java/org/dpworld/ioc/context/AnnotationConfigContext.java`:
+```java
     private void injectDependencies(Object targetInstance) throws IllegalAccessException {
         Class<?> clazz = targetInstance.getClass();
         Field[] fields = clazz.getDeclaredFields();
@@ -175,12 +220,14 @@ public class AnnotationConfigContext implements ApplicationContext {
                 Class<?> dependencyType = field.getType();
                 Object dependencyInstance = beanRegistry.get(dependencyType);
 
+                // Crash early if the requested dependency bean is missing from the container
                 if (dependencyInstance == null) {
-                    throw new RuntimeException("No active bean found of type: " + dependencyType.getName());
+                    throw new NoSuchElementException("Unsatisfied dependency: no bean of type " 
+                        + dependencyType.getName() + " registered for " + clazz.getName());
                 }
 
-                field.setAccessible(true);
-                field.set(targetInstance, dependencyInstance); // Dynamically set the private field!
+                field.setAccessible(true); // Overrides private variables lock
+                field.set(targetInstance, dependencyInstance); // Dynamically set value!
             }
         }
     }
@@ -190,7 +237,7 @@ public class AnnotationConfigContext implements ApplicationContext {
     public <T> T getBean(Class<T> beanClass) {
         T bean = (T) beanRegistry.get(beanClass);
         if (bean == null) {
-            throw new NoSuchElementException("No bean registered for type: " + beanClass.getName());
+            throw new NoSuchElementException("No bean managed for type: " + beanClass.getName());
         }
         return bean;
     }
@@ -199,36 +246,121 @@ public class AnnotationConfigContext implements ApplicationContext {
 
 ---
 
-## 4. Classpath Scanner Internals
+### Step 7: Creating a Mock Application to Verify Integration
+Create a mock application structure to verify our container.
 
-Discovering class files on the filesystem from a Java package name requires navigating directories. Your `ClasspathScanner` utility must perform the following transformations:
+Create `src/main/java/org/dpworld/ioc/mock/MockRepository.java`:
+```java
+package org.dpworld.ioc.mock;
 
+import org.dpworld.ioc.annotation.Component;
+
+@Component
+public class MockRepository {
+    public String findData() {
+        return "Real Database Records";
+    }
+}
 ```
-Package name: "org.dpworld.app" 
-  ==> Convert to Folder Path: "org/dpworld/app"
-  ==> Resolve absolute URL on your computer: "file:///D:/DP World/target/classes/org/dpworld/app"
-  ==> Scan files for ".class" extensions: "BookService.class"
-  ==> Reconstruct Fully Qualified Class Name: "org.dpworld.app.service.BookService"
-  ==> Load class definition: Class.forName(...)
+
+Create `src/main/java/org/dpworld/ioc/mock/MockService.java`:
+```java
+package org.dpworld.ioc.mock;
+
+import org.dpworld.ioc.annotation.Component;
+import org.dpworld.ioc.annotation.Autowired;
+
+@Component
+public class MockService {
+    @Autowired
+    private MockRepository mockRepository; // Wired automatically
+
+    public String execute() {
+        return "Processed: " + mockRepository.findData();
+    }
+}
+```
+
+Create `src/main/java/org/dpworld/ioc/mock/MockController.java`:
+```java
+package org.dpworld.ioc.mock;
+
+import org.dpworld.ioc.annotation.Component;
+import org.dpworld.ioc.annotation.Autowired;
+
+@Component
+public class MockController {
+    @Autowired
+    private MockService mockService; // Wired automatically
+
+    public String handleRequest() {
+        return "Response: " + mockService.execute();
+    }
+}
 ```
 
 ---
 
-## 🔧 TDD Checklist for Your Implementation
+### Step 8: Writing and Executing the Verification Test Suite
+Create a comprehensive test suite to verify the container's behavior.
 
-To verify that your custom DI container operates with absolute correctness, your JUnit 5 test suite must satisfy these specific behaviors:
+Create `src/test/java/org/dpworld/ioc/ContainerTests.java`:
+```java
+package org.dpworld.ioc;
 
-- [ ] **Specs: Annotation Recognition**
-  - [ ] Scans packages and accurately instantiates classes marked with `@Component`.
-  - [ ] Ensures classes NOT marked with `@Component` are completely ignored and never instantiated.
-- [ ] **Specs: Bean Registry Retrieval**
-  - [ ] `getBean(Class<T>)` returns the correct registered singleton bean instance.
-  - [ ] Requesting the same bean class twice returns the **exact same** singleton object reference (`assertSame()`).
-  - [ ] Throws a `NoSuchElementException` if requesting a class that is not managed as a bean.
-- [ ] **Specs: Dependency Wiring**
-  - [ ] Successfully wires dependencies into fields annotated with `@Autowired`.
-  - [ ] Verifies that private fields are successfully injected with their active bean instances.
-  - [ ] Successfully executes multi-tier dependency wiring chains (e.g., `Controller` depends on `Service` which depends on `Repository` — all must be fully wired!).
-- [ ] **Specs: Failure Handling**
-  - [ ] Throws a meaningful exception at startup if a class requests an `@Autowired` dependency type that is not registered as a `@Component` in the context (Unsatisfied Dependency).
-  - [ ] Gracefully handles empty packages without throwing crash exceptions.
+import org.dpworld.ioc.context.AnnotationConfigContext;
+import org.dpworld.ioc.context.ApplicationContext;
+import org.dpworld.ioc.mock.MockController;
+import org.dpworld.ioc.mock.MockService;
+import org.junit.jupiter.api.Test;
+import java.util.NoSuchElementException;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+public class ContainerTests {
+
+    @Test
+    void shouldScanAndInstantiateBeans() {
+        ApplicationContext context = new AnnotationConfigContext("org.dpworld.ioc.mock");
+        
+        MockController controller = context.getBean(MockController.class);
+        assertNotNull(controller, "Bean should be instantiated and registered");
+    }
+
+    @Test
+    void shouldRegisterBeansAsSingletons() {
+        ApplicationContext context = new AnnotationConfigContext("org.dpworld.ioc.mock");
+        
+        MockService service1 = context.getBean(MockService.class);
+        MockService service2 = context.getBean(MockService.class);
+        
+        assertSame(service1, service2, "Beans must be registered as singletons");
+    }
+
+    @Test
+    void shouldInjectDependenciesRecursively() {
+        ApplicationContext context = new AnnotationConfigContext("org.dpworld.ioc.mock");
+        
+        MockController controller = context.getBean(MockController.class);
+        
+        String result = controller.handleRequest();
+        assertEquals("Response: Processed: Real Database Records", result, 
+            "Dependencies must be fully wired and functional");
+    }
+
+    @Test
+    void shouldThrowOnMissingBeanRequest() {
+        ApplicationContext context = new AnnotationConfigContext("org.dpworld.ioc.mock");
+        
+        assertThrows(NoSuchElementException.class, () -> {
+            context.getBean(String.class); // Request an unmanaged type
+        });
+    }
+}
+```
+
+To run this custom DI test suite:
+```bash
+mvn test
+```
+This execution validates that the classpath scanner dynamically loads classes, allocates singleton mappings, overrides private field access, and resolves multi-tier dependency chains successfully under TDD rules!
