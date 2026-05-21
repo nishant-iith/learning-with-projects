@@ -1,0 +1,13 @@
+{
+  "name": "d02-kubernetes-starter",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "vitest": "^1.0.0",
+    "yaml": "^2.3.1"
+  }
+}

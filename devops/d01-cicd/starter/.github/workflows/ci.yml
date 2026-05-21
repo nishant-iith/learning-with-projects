@@ -1,0 +1,6 @@
+# TODO: Write a multi-stage GitHub Actions CI/CD Pipeline
+# Trigger on pushes & pull requests targeting branch 'main'
+# Jobs:
+#  - lint (ubuntu-latest, cache dependencies, run npm run lint)
+#  - test (ubuntu-latest, needs lint, cache dependencies, run npm run test)
+#  - build (ubuntu-latest, needs test, cache dependencies, run npm run build)

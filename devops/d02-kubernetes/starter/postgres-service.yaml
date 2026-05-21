@@ -1,0 +1,12 @@
+# TODO: Define ClusterIP Service exposing Postgres internally
+# apiVersion: v1
+# kind: Service
+# metadata:
+#   name: postgres-service
+# spec:
+#   type: ClusterIP
+#   ports:
+#     - port: 5432
+#       targetPort: 5432
+#   selector:
+#     app: postgres

@@ -1,0 +1,22 @@
+# TODO: Define 2-replica Web Application deployment (representing your TypeScript API).
+# Inject configurations and secrets from ConfigMap/Secret.
+# Configure CPU/Memory requests & limits and liveness/readiness probes.
+# apiVersion: apps/v1
+# kind: Deployment
+# metadata:
+#   name: web-deployment
+# spec:
+#   replicas: 2
+#   selector:
+#     matchLabels:
+#       app: web
+#   template:
+#     metadata:
+#       labels:
+#         app: web
+#     spec:
+#       containers:
+#         - name: web
+#           image: d00-docker-starter:latest
+#           ports:
+#             - containerPort: 3000
