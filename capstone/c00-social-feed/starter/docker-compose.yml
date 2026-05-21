@@ -1,0 +1,30 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: social_feed_postgres
+    environment:
+      POSTGRES_USER: learner
+      POSTGRES_PASSWORD: secret
+      POSTGRES_DB: social_feed
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    container_name: social_feed_redis
+    ports:
+      - "6379:6379"
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: social_feed_rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"   # Management UI
+
+volumes:
+  pgdata:
