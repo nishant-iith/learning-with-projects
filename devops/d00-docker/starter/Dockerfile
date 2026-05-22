@@ -1,3 +1,17 @@
-# TODO: Build a multi-stage, high-fidelity Dockerfile
-# Stage 1: Build (compiler & devDependencies)
-# Stage 2: Production Run (minimal node alpine base, copy built JS, only production dependencies, non-root execution on USER node, EXPOSE 3000)
+# Stage 1: Build stage
+FROM node:20-alpine AS builder
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci
+COPY . .
+RUN npx tsc
+
+# Stage 2: Runtime stage
+FROM node:20-alpine
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci --only=production
+COPY --from=builder /app/dist ./dist
+USER node
+EXPOSE 3000
+CMD ["node", "dist/index.js"]

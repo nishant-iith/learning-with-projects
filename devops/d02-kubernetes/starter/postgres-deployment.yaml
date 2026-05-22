@@ -1,20 +1,19 @@
-# TODO: Define single-replica postgres database deployment
-# apiVersion: apps/v1
-# kind: Deployment
-# metadata:
-#   name: postgres-deployment
-# spec:
-#   replicas: 1
-#   selector:
-#     matchLabels:
-#       app: postgres
-#   template:
-#     metadata:
-#       labels:
-#         app: postgres
-#     spec:
-#       containers:
-#         - name: postgres
-#           image: postgres:15-alpine
-#           ports:
-#             - containerPort: 5432
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:15-alpine
+          ports:
+            - containerPort: 5432

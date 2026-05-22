@@ -11,9 +11,8 @@ export class LoadBalancer {
   private strategy: RoutingStrategy;
   private rrIndex: number = 0;
   
-  // For Weighted Round Robin tracking
-  private wrrIndex: number = 0;
-  private currentWeight: number = 0;
+  // Track weights dynamically for the Nginx smooth weighted round robin algorithm
+  private currentWeights: Map<string, number> = new Map();
 
   constructor(backends: BackendServer[], strategy: RoutingStrategy = 'ROUND_ROBIN') {
     this.backends = backends;
@@ -27,33 +26,64 @@ export class LoadBalancer {
     }
 
     if (this.strategy === 'ROUND_ROBIN') {
-      // TODO: Implement Round Robin selection
-      // TODO: Loop rrIndex over activeServers.length and increment it
-      throw new Error('ROUND_ROBIN is not implemented');
+      const server = activeServers[this.rrIndex % activeServers.length];
+      this.rrIndex++;
+      return server;
     }
 
     if (this.strategy === 'WEIGHTED_ROUND_ROBIN') {
-      // TODO: Implement Weighted Round Robin selection
-      // TODO: Select server based on configured weights
-      throw new Error('WEIGHTED_ROUND_ROBIN is not implemented');
+      let totalWeight = 0;
+      let maxWeightServer: BackendServer | null = null;
+      let maxWeightValue = -Infinity;
+
+      for (const server of activeServers) {
+        totalWeight += server.weight;
+        let currentWeight = this.currentWeights.get(server.url) || 0;
+        currentWeight += server.weight;
+        this.currentWeights.set(server.url, currentWeight);
+
+        if (currentWeight > maxWeightValue) {
+          maxWeightValue = currentWeight;
+          maxWeightServer = server;
+        }
+      }
+
+      if (maxWeightServer) {
+        let currentWeight = this.currentWeights.get(maxWeightServer.url) || 0;
+        currentWeight -= totalWeight;
+        this.currentWeights.set(maxWeightServer.url, currentWeight);
+        return maxWeightServer;
+      }
+
+      return activeServers[0];
     }
 
     if (this.strategy === 'IP_HASH') {
-      // TODO: Implement IP Hash selection
-      // TODO: Hash the clientIp and select server using modulo: hash % activeServers.length
-      throw new Error('IP_HASH is not implemented');
+      const ip = clientIp || '127.0.0.1';
+      let hash = 0;
+      for (let i = 0; i < ip.length; i++) {
+        hash += ip.charCodeAt(i);
+      }
+      return activeServers[hash % activeServers.length];
     }
 
     throw new Error('Unknown routing strategy');
   }
 
   public async performHealthCheck(pingUrl: (url: string) => Promise<boolean>): Promise<void> {
-    // TODO: Iterate over all backends (both healthy and unhealthy)
-    // TODO: Invoke pingUrl for each backend
-    // TODO: Update each backend's healthy status based on the result
+    await Promise.all(
+      this.backends.map(async (backend) => {
+        try {
+          backend.healthy = await pingUrl(backend.url);
+        } catch {
+          backend.healthy = false;
+        }
+      })
+    );
   }
 
   public getBackends(): BackendServer[] {
     return this.backends;
   }
 }
+

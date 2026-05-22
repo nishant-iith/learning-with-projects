@@ -13,12 +13,25 @@ export class TokenBucketLimiter implements RateLimiter {
   }
 
   public allow(clientId: string): boolean {
-    // TODO: Retrieve client's bucket state. If not present, initialize with full capacity.
-    // TODO: Calculate dynamic refill based on time elapsed since lastRefill:
-    //       tokens = Math.min(capacity, tokens + elapsedMilliseconds * refillRate)
-    // TODO: If tokens >= 1, decrement by 1, update state, and return true.
-    // TODO: Otherwise, return false.
-    throw new Error('TokenBucketLimiter.allow is not implemented');
+    const now = Date.now();
+    let state = this.clientBuckets.get(clientId);
+    if (!state) {
+      state = { tokens: this.capacity, lastRefill: now };
+    } else {
+      const elapsed = now - state.lastRefill;
+      const refilled = elapsed * this.refillRate;
+      state.tokens = Math.min(this.capacity, state.tokens + refilled);
+      state.lastRefill = now;
+    }
+
+    if (state.tokens >= 1) {
+      state.tokens -= 1;
+      this.clientBuckets.set(clientId, state);
+      return true;
+    } else {
+      this.clientBuckets.set(clientId, state);
+      return false;
+    }
   }
 }
 
@@ -33,13 +46,27 @@ export class LeakyBucketLimiter implements RateLimiter {
   }
 
   public allow(clientId: string): boolean {
-    // TODO: Retrieve client's queue state. If not present, initialize.
-    // TODO: Calculate leaks based on time elapsed:
-    //       leaked = Math.floor(elapsedMilliseconds * leakRate)
-    //       queueSize = Math.max(0, queueSize - leaked)
-    // TODO: If queueSize < capacity, increment queueSize, update state, and return true.
-    // TODO: Otherwise, return false.
-    throw new Error('LeakyBucketLimiter.allow is not implemented');
+    const now = Date.now();
+    let state = this.clientQueues.get(clientId);
+    if (!state) {
+      state = { queueSize: 0, lastLeak: now };
+    } else {
+      const elapsed = now - state.lastLeak;
+      const leaked = Math.floor(elapsed * this.leakRate);
+      if (leaked > 0) {
+        state.queueSize = Math.max(0, state.queueSize - leaked);
+        state.lastLeak = state.lastLeak + leaked / this.leakRate;
+      }
+    }
+
+    if (state.queueSize < this.capacity) {
+      state.queueSize += 1;
+      this.clientQueues.set(clientId, state);
+      return true;
+    } else {
+      this.clientQueues.set(clientId, state);
+      return false;
+    }
   }
 }
 
@@ -54,11 +81,25 @@ export class FixedWindowLimiter implements RateLimiter {
   }
 
   public allow(clientId: string): boolean {
-    // TODO: Retrieve client's window state.
-    // TODO: If time elapsed since windowStart >= windowSize, reset windowStart to now and count to 0.
-    // TODO: If count < limit, increment count and return true.
-    // TODO: Otherwise, return false.
-    throw new Error('FixedWindowLimiter.allow is not implemented');
+    const now = Date.now();
+    let state = this.clientWindows.get(clientId);
+    if (!state) {
+      state = { count: 0, windowStart: now };
+    }
+
+    if (now - state.windowStart >= this.windowSize) {
+      state.windowStart = now;
+      state.count = 0;
+    }
+
+    if (state.count < this.limit) {
+      state.count += 1;
+      this.clientWindows.set(clientId, state);
+      return true;
+    } else {
+      this.clientWindows.set(clientId, state);
+      return false;
+    }
   }
 }
 
@@ -73,10 +114,19 @@ export class SlidingWindowLogLimiter implements RateLimiter {
   }
 
   public allow(clientId: string): boolean {
-    // TODO: Retrieve client's timestamp log array. If not present, initialize empty.
-    // TODO: Filter out timestamps older than (now - windowSize).
-    // TODO: If log length < limit, push now's timestamp to log, update client state, and return true.
-    // TODO: Otherwise, return false.
-    throw new Error('SlidingWindowLogLimiter.allow is not implemented');
+    const now = Date.now();
+    let log = this.clientLogs.get(clientId) || [];
+
+    const threshold = now - this.windowSize;
+    log = log.filter((ts) => ts > threshold);
+
+    if (log.length < this.limit) {
+      log.push(now);
+      this.clientLogs.set(clientId, log);
+      return true;
+    } else {
+      this.clientLogs.set(clientId, log);
+      return false;
+    }
   }
 }

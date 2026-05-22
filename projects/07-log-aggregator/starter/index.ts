@@ -18,15 +18,20 @@ export class LogRingBuffer {
   }
 
   public push(entry: LogEntry) {
-    // TODO: Write entry to buffer[writePointer]
-    // TODO: Update writePointer (circularly: (writePointer + 1) % capacity)
-    // TODO: Maintain count up to capacity
-    throw new Error('push is not implemented');
+    this.buffer[this.writePointer] = entry;
+    this.writePointer = (this.writePointer + 1) % this.capacity;
+    if (this.count < this.capacity) {
+      this.count++;
+    }
   }
 
   public getAll(): LogEntry[] {
-    // TODO: Return all items in correct chronological order
-    throw new Error('getAll is not implemented');
+    const result: LogEntry[] = [];
+    const start = this.count === this.capacity ? this.writePointer : 0;
+    for (let i = 0; i < this.count; i++) {
+      result.push(this.buffer[(start + i) % this.capacity]);
+    }
+    return result;
   }
 
   public getCount(): number {
@@ -44,16 +49,37 @@ export class LogAggregatorServer {
 
   public start(port: number, host: string = '127.0.0.1'): Promise<void> {
     return new Promise((resolve, reject) => {
-      // TODO: Create a UDP socket using dgram.createSocket('udp4')
-      // TODO: Register message parsing on incoming packets
-      // TODO: Bind the UDP socket to the port and host
-      reject(new Error('start is not implemented'));
+      try {
+        this.udpSocket = dgram.createSocket('udp4');
+        
+        this.udpSocket.on('message', (msg) => {
+          const logStr = msg.toString('utf8');
+          this.ingestLogString(logStr);
+        });
+
+        this.udpSocket.on('error', (err) => {
+          // Handle socket errors gracefully
+        });
+
+        this.udpSocket.bind(port, host, () => {
+          resolve();
+        });
+      } catch (err) {
+        reject(err);
+      }
     });
   }
 
   public stop(): Promise<void> {
     return new Promise((resolve) => {
-      // TODO: Safely close the UDP socket
+      if (this.udpSocket) {
+        try {
+          this.udpSocket.close();
+        } catch {
+          // Ignore close errors
+        }
+        this.udpSocket = null;
+      }
       resolve();
     });
   }
@@ -70,15 +96,30 @@ export class LogAggregatorServer {
     startTime?: number;
     endTime?: number;
   }): LogEntry[] {
-    // TODO: Fetch all logs from ring buffer
-    // TODO: Apply filters (severity, startTime range, endTime range) and return matches
-    throw new Error('queryLogs is not implemented');
+    let logs = this.ringBuffer.getAll();
+
+    if (filters.severity) {
+      logs = logs.filter(l => l.severity === filters.severity);
+    }
+    if (filters.startTime !== undefined) {
+      logs = logs.filter(l => l.timestamp >= filters.startTime!);
+    }
+    if (filters.endTime !== undefined) {
+      logs = logs.filter(l => l.timestamp <= filters.endTime!);
+    }
+
+    return logs;
   }
 
   public static parseLogLine(line: string): LogEntry | null {
-    // TODO: Extract timestamp, severity, and message from standard log line format:
-    //       "<TIMESTAMP> [<SEVERITY>] <MESSAGE>"
-    //       Example: "1716300000000 [INFO] User logged in successfully"
-    throw new Error('parseLogLine is not implemented');
+    const regex = /^(\d+)\s+\[(INFO|WARN|ERROR)\]\s+(.+)$/;
+    const match = line.match(regex);
+    if (!match) return null;
+    return {
+      timestamp: parseInt(match[1], 10),
+      severity: match[2] as 'INFO' | 'WARN' | 'ERROR',
+      message: match[3]
+    };
   }
 }
+

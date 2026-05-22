@@ -12,14 +12,19 @@ export class TaskMinHeap {
   protected heap: Task[] = [];
 
   public insert(task: Task) {
-    // TODO: Insert task at the end of the array, bubble up to restore min-heap property based on runAt
-    throw new Error('insert is not implemented');
+    this.heap.push(task);
+    this.bubbleUp(this.heap.length - 1);
   }
 
   public extractMin(): Task | null {
-    // TODO: Extract task with lowest runAt (root of the heap)
-    // TODO: Restore min-heap property by bubbling down the replacement root
-    throw new Error('extractMin is not implemented');
+    if (this.heap.length === 0) return null;
+    const min = this.heap[0];
+    const last = this.heap.pop()!;
+    if (this.heap.length > 0) {
+      this.heap[0] = last;
+      this.bubbleDown(0);
+    }
+    return min;
   }
 
   public peekMin(): Task | null {
@@ -29,6 +34,44 @@ export class TaskMinHeap {
   public size(): number {
     return this.heap.length;
   }
+
+  private bubbleUp(index: number) {
+    while (index > 0) {
+      const parentIndex = Math.floor((index - 1) / 2);
+      if (this.heap[index].runAt >= this.heap[parentIndex].runAt) {
+        break;
+      }
+      this.swap(index, parentIndex);
+      index = parentIndex;
+    }
+  }
+
+  private bubbleDown(index: number) {
+    const length = this.heap.length;
+    while (true) {
+      let smallest = index;
+      const left = 2 * index + 1;
+      const right = 2 * index + 2;
+
+      if (left < length && this.heap[left].runAt < this.heap[smallest].runAt) {
+        smallest = left;
+      }
+      if (right < length && this.heap[right].runAt < this.heap[smallest].runAt) {
+        smallest = right;
+      }
+      if (smallest === index) {
+        break;
+      }
+      this.swap(index, smallest);
+      index = smallest;
+    }
+  }
+
+  private swap(i: number, j: number) {
+    const temp = this.heap[i];
+    this.heap[i] = this.heap[j];
+    this.heap[j] = temp;
+  }
 }
 
 export class TaskScheduler {
@@ -36,6 +79,7 @@ export class TaskScheduler {
   protected maxConcurrency: number;
   protected activeWorkers: number = 0;
   protected running: boolean = false;
+  protected tickTimeout: any = null;
 
   constructor(maxConcurrency: number = 2) {
     this.maxConcurrency = maxConcurrency;
@@ -43,6 +87,13 @@ export class TaskScheduler {
 
   public schedule(task: Task) {
     this.heap.insert(task);
+    if (this.running) {
+      if (this.tickTimeout) {
+        clearTimeout(this.tickTimeout);
+        this.tickTimeout = null;
+      }
+      this.tick();
+    }
   }
 
   public start() {
@@ -52,16 +103,67 @@ export class TaskScheduler {
 
   public stop() {
     this.running = false;
+    if (this.tickTimeout) {
+      clearTimeout(this.tickTimeout);
+      this.tickTimeout = null;
+    }
   }
 
   protected async tick() {
-    // TODO: While running, activeWorkers < maxConcurrency, and lowest task runAt <= Date.now():
-    //       - Extract task
-    //       - Increment activeWorkers
-    //       - Run task action in background
-    //       - On success, if periodic (interval is present), reschedule task with runAt = now + interval
-    //       - On failure, reschedule with exponential backoff: runAt = now + Math.pow(2, retryCount) * 100
-    //       - Decrement activeWorkers and recursively call tick()
+    if (!this.running) return;
+
+    const now = Date.now();
+
+    while (this.running && this.activeWorkers < this.maxConcurrency) {
+      const minTask = this.heap.peekMin();
+      if (!minTask) {
+        break;
+      }
+
+      if (minTask.runAt > now) {
+        const delay = minTask.runAt - now;
+        if (!this.tickTimeout) {
+          this.tickTimeout = setTimeout(() => {
+            this.tickTimeout = null;
+            this.tick();
+          }, delay);
+        }
+        break;
+      }
+
+      const task = this.heap.extractMin();
+      if (!task) break;
+
+      this.activeWorkers++;
+
+      task.action()
+        .then(() => {
+          this.activeWorkers--;
+          if (task.interval !== undefined) {
+            const rescheduledTask: Task = {
+              ...task,
+              runAt: Date.now() + task.interval,
+              retryCount: 0
+            };
+            this.schedule(rescheduledTask);
+          }
+          this.tick();
+        })
+        .catch(() => {
+          this.activeWorkers--;
+          if (task.retryCount < task.maxRetries) {
+            const nextRetryCount = task.retryCount + 1;
+            const backoff = Math.pow(2, nextRetryCount) * 100;
+            const rescheduledTask: Task = {
+              ...task,
+              retryCount: nextRetryCount,
+              runAt: Date.now() + backoff
+            };
+            this.schedule(rescheduledTask);
+          }
+          this.tick();
+        });
+    }
   }
 
   public getActiveWorkersCount(): number {

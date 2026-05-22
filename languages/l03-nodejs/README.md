@@ -21,7 +21,7 @@ graph TD
     JSONParse --> Router["Router / Controller"]
     Router -- "4. Save Note (Atomic Write)" --> FS["fs.promises.writeFile"]
     FS --> Disk[("Local File System (.json files)")]
-    Disk -.-> |"Async Callback / Promise resolve"| Ev
+    Disk -..-> |"Async Callback / Promise resolve"| Ev
     Ev -- "5. Return HTTP Response" --> Client
 ```
 
@@ -30,6 +30,40 @@ graph TD
 ## 🔬 Core Learning Objectives
 
 ### 1. The Node.js Event Loop & Non-Blocking I/O
+
+**L1 — What It Is**: Node.js runs JavaScript in a single thread. To avoid blocking this thread on slow operations (disk reads, network calls), it uses an **asynchronous, non-blocking I/O model**. When a blocking operation is requested, Node.js delegates it to `libuv` (a C library that interfaces with the OS kernel's async I/O facilities) and immediately moves on to process other events.
+
+**L2 — Event Loop Phases**: The event loop cycles through multiple phases, each with its own queue of callbacks to execute:
+
+```mermaid
+graph LR
+    classDef default fill:#ffffff,stroke:#333333,stroke-width:1px,color:#333333;
+    classDef phase fill:#e8f4fd,stroke:#2980b9,stroke-width:2px,color:#1a5276;
+    classDef micro fill:#e9f7ef,stroke:#27ae60,stroke-width:2px,color:#1e8449;
+
+    Timer["Timers Phase<br>setTimeout, setInterval"]:::phase
+    Pending["Pending I/O Callbacks<br>(deferred from last tick)"]:::phase
+    Idle["Idle / Prepare<br>(internal use)"]:::phase
+    Poll["Poll Phase<br>(retrieve new I/O events)"]:::phase
+    Check["Check Phase<br>setImmediate()"]:::phase
+    Close["Close Callbacks<br>socket.on('close')"]:::phase
+    Micro["Microtask Queue<br>Promise.then, process.nextTick"]:::micro
+
+    Timer --> Pending --> Idle --> Poll --> Check --> Close --> Timer
+    Micro -->|"drain BEFORE each phase"| Timer
+```
+
+Understanding the Event Loop is critical when ordering async operations:
+```typescript
+// Priority order: process.nextTick > Promise.then > setImmediate > setTimeout
+process.nextTick(() => console.log('1: nextTick'));
+Promise.resolve().then(() => console.log('2: Promise'));
+setImmediate(() => console.log('3: setImmediate'));
+setTimeout(() => console.log('4: setTimeout'), 0);
+console.log('0: Synchronous code');
+// Output order: 0, 1, 2, 3, 4
+```
+
 Understand how a single-threaded JavaScript process handles millions of concurrent requests. Master the microtask queue (`process.nextTick`, Promises) and macrotask phases of the `libuv` event loop:
 - **Timers Phase**: Executes callbacks scheduled by `setTimeout()` and `setInterval()`.
 - **Pending Callbacks Phase**: Executes I/O callbacks deferred from previous iterations.
@@ -38,15 +72,60 @@ Understand how a single-threaded JavaScript process handles millions of concurre
 - **Close Callbacks Phase**: Executes close handlers (e.g., `socket.on('close')`).
 
 ### 2. Stream & Buffer Manipulation
-HTTP request bodies do not arrive in one piece. They arrive as a stream of raw binary **Buffers**. You will learn to:
+
+**L1 — What They Are**: HTTP request bodies do not arrive in one piece. They arrive as a stream of raw binary **Buffers**. A `Buffer` is a fixed-size chunk of memory allocated outside the V8 heap, used for raw binary data.
+
+**L2 — How Streams Work**: Node.js `http.IncomingMessage` (the `req` object) is a **Readable Stream**. Data arrives in chunks and is emitted via events:
+
+```typescript
+// Raw buffer accumulation pattern
+const chunks: Buffer[] = [];
+
+req.on('data', (chunk: Buffer) => {
+    chunks.push(chunk);             // collect raw Buffer chunks
+});
+
+req.on('end', () => {
+    // Buffer.concat merges all chunks into one Buffer
+    const rawBody = Buffer.concat(chunks).toString('utf8');
+    const parsed = JSON.parse(rawBody);
+    // proceed with parsed data
+});
+
+req.on('error', (err) => {
+    // Handle stream errors (connection reset, etc.)
+    res.writeHead(400);
+    res.end(JSON.stringify({ error: 'Stream error: ' + err.message }));
+});
+```
+
+You will learn to:
 - Listen to stream chunk events (`req.on('data')`).
 - Buffer and merge binary chunks safely (`Buffer.concat()`).
 - Handle stream completion (`req.on('end')`) and stream aborts/errors (`req.on('error')`).
 
 ### 3. Asynchronous Thread Safety & Atomic File Operations
-When multiple clients attempt to write to or modify files concurrently:
-- **Race conditions** can corrupt data if one write overrides another.
-- **File locking** or **Atomic writes** (writing to a temporary file first, then performing a fast rename) are critical for preventing data corruption in file-based storage systems.
+
+**L1 — The Race Condition Problem**: When multiple clients attempt to write to or modify files concurrently, a **race condition** can occur:
+```
+Client A: reads notes.json → [note1, note2]
+Client B: reads notes.json → [note1, note2]
+Client A: writes [note1, note2, noteA] → file saved ✅
+Client B: writes [note1, note2, noteB] → overwrites Client A's write! noteA is LOST ❌
+```
+
+**L2 — The Atomic Write Solution**: Write to a temporary file, then rename:
+```typescript
+// Step 1: Write to temp file (may fail midway — partially written)
+await fs.promises.writeFile(`${id}.tmp`, JSON.stringify(note));
+
+// Step 2: Rename is an atomic OS operation — it either fully succeeds or fails
+// The file system rename() syscall is guaranteed to be atomic on POSIX systems
+await fs.promises.rename(`${id}.tmp`, `${id}.json`);
+// Now the file either has the complete new content or the old content — never a partial state
+```
+
+**Why rename is atomic**: On Linux/macOS, `rename()` is a POSIX system call guaranteed by the OS to be atomic. The directory entry is updated in a single operation. On Windows, this requires `MoveFileEx` with `MOVEFILE_REPLACE_EXISTING`.
 
 ---
 
@@ -160,6 +239,29 @@ Create the raw HTTP server using `http.createServer`. It must handle:
   - Return `404 Not Found` for routes that don't match or notes that do not exist.
   - Wrap routing logic in a global `try-catch` to avoid process crashes. Return `500 Internal Server Error`.
 
+**Routing logic illustration:**
+```mermaid
+graph TD
+    classDef default fill:#ffffff,stroke:#333333,stroke-width:1px,color:#333333;
+
+    Req["Incoming Request (method + url)"]
+    Req --> R1{"GET /api/notes ?"}
+    R1 -->|"Yes"| A1["getAllNotes() → 200 JSON array"]
+    R1 -->|"No"| R2{"GET /api/notes/:id ?"}
+    R2 -->|"Yes"| A2{"note found?"}
+    A2 -->|"Yes"| A2a["200 JSON note object"]
+    A2 -->|"No"| A2b["404 Not Found"]
+    R2 -->|"No"| R3{"POST /api/notes ?"}
+    R3 -->|"Yes"| B1{"valid JSON body?"}
+    B1 -->|"Yes"| B2["createNote() → 201 Created"]
+    B1 -->|"No"| B3["400 Bad Request"]
+    R3 -->|"No"| R4{"DELETE /api/notes/:id ?"}
+    R4 -->|"Yes"| C1{"note existed?"}
+    C1 -->|"Yes"| C2["200 Deleted"]
+    C1 -->|"No"| C3["404 Not Found"]
+    R4 -->|"No"| D["404 Route Not Found"]
+```
+
 ---
 
 ## 🧪 The Verification Suite (`test/notes.test.ts`)
@@ -231,3 +333,93 @@ Want to level up your Node.js understanding? Try implementing these features:
     If you need to return massive files, stream them chunk-by-chunk to the client using `fs.createReadStream` and piping it directly to `res`.
 3.  **Cross-Origin Resource Sharing (CORS)**:
     Implement CORS pre-flight pre-processing (`OPTIONS` method) returning appropriate access headers so that browser clients can access your API.
+
+---
+
+## ⚠️ Common Pitfalls & Anti-Patterns
+
+### Pitfall 1: Blocking the Event Loop with Synchronous FS Operations
+```typescript
+// ❌ WRONG — fs.readFileSync blocks the ENTIRE Node.js process
+// While reading, NO other request can be processed!
+const data = fs.readFileSync('./data/note.json', 'utf8');
+
+// ✅ CORRECT — fs.promises is non-blocking; event loop continues
+const data = await fs.promises.readFile('./data/note.json', 'utf8');
+```
+
+### Pitfall 2: Not Handling `ENOENT` Errors Explicitly
+```typescript
+// ❌ WRONG — throws unhandled error if file doesn't exist
+const data = await fs.promises.readFile('./data/missing.json', 'utf8');
+
+// ✅ CORRECT — check error code explicitly
+try {
+  const data = await fs.promises.readFile('./data/missing.json', 'utf8');
+  return JSON.parse(data);
+} catch (err: any) {
+  if (err.code === 'ENOENT') return null; // graceful not-found
+  throw err; // re-throw unexpected errors
+}
+```
+
+### Pitfall 3: Missing `await` on Async File Operations
+```typescript
+// ❌ WRONG — the unlink is not awaited; response is sent before deletion completes
+async function deleteNote(id: string) {
+  fs.promises.unlink(`./data/${id}.json`); // fire-and-forget BUG!
+  return true; // lies to the caller
+}
+
+// ✅ CORRECT — always await async operations
+async function deleteNote(id: string) {
+  await fs.promises.unlink(`./data/${id}.json`);
+  return true;
+}
+```
+
+### Pitfall 4: Not Handling `req.on('error')` in POST Handlers
+A slow or aborted client POST can leave the stream in an error state. If unhandled, Node.js emits an `uncaughtException` and crashes the process:
+```typescript
+req.on('error', (err) => {
+    console.error('Request stream error:', err);
+    res.writeHead(400);
+    res.end(JSON.stringify({ error: 'Request stream aborted' }));
+});
+```
+
+### Pitfall 5: Using `JSON.parse` Without Try-Catch on User Input
+```typescript
+// ❌ WRONG — malformed JSON from client crashes the handler
+const body = JSON.parse(rawBody);
+
+// ✅ CORRECT — always guard user-supplied JSON
+try {
+  const body = JSON.parse(rawBody);
+  // proceed
+} catch {
+  res.writeHead(400);
+  res.end(JSON.stringify({ error: 'Invalid JSON body' }));
+  return;
+}
+```
+
+---
+
+## 🔑 Key Takeaways
+
+1. **Event Loop = Concurrency Without Threads**: Node.js handles thousands of simultaneous requests on one thread by delegating I/O to the OS and continuing execution. Never block this thread with synchronous operations.
+2. **`fs.promises` Over `fs` Callbacks**: Always use the `fs/promises` module (`fs.promises.readFile`, etc.) with `async/await` for clean, readable async code. The callback-based `fs.readFile` API is legacy.
+3. **Atomic Writes Prevent Data Corruption**: Write to `.tmp` then rename. The rename syscall is atomic — the file is either the old version or the new version, never half-written.
+4. **Buffers Are Raw Memory**: HTTP request bodies are streams of `Buffer` objects. Always `Buffer.concat()` all chunks before parsing with `JSON.parse` — a single chunk may be truncated.
+5. **Always Handle Stream Events**: Register `req.on('data')`, `req.on('end')`, and `req.on('error')` for every POST/PUT request body.
+6. **`ENOENT` Is Normal**: "File not found" is an expected outcome, not an exception worth crashing over. Check `err.code === 'ENOENT'` and return a graceful response.
+7. **A Single Global `try-catch` Is Your Last Defense**: Wrap your routing switch in a top-level `try-catch` to prevent any unexpected error from crashing the server with an unhandled rejection.
+
+## 📚 Further Reading
+
+- [Node.js Event Loop Explained](https://nodejs.org/en/docs/guides/event-loop-timers-and-nexttick)
+- [Node.js `fs` Module Reference](https://nodejs.org/api/fs.html)
+- [Understanding Streams in Node.js](https://nodejs.org/api/stream.html)
+- [Atomic File Operations Explained](https://rcrowley.org/2010/01/06/things-unix-can-do-atomically.html)
+- [Vitest Documentation](https://vitest.dev/guide/)

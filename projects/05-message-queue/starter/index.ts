@@ -12,6 +12,7 @@ export class MessageQueueBroker {
   protected consumerOffsets: Map<string, number> = new Map(); // Key: 'topic:consumerId', Value: offset
   protected visibilityTimeout: number; // In milliseconds
   protected maxRetries: number;
+  private topicSequence: Map<string, number> = new Map();
 
   constructor(visibilityTimeout: number = 2000, maxRetries: number = 3) {
     this.visibilityTimeout = visibilityTimeout;
@@ -25,28 +26,63 @@ export class MessageQueueBroker {
   }
 
   public publish(topic: string, payload: string): Message {
-    // TODO: Register topic if not exists
-    // TODO: Construct new Message with unique ID, auto-incrementing offset, retryCount: 0, visibleAfter: 0
-    // TODO: Append to the topic's message array and return the message
-    throw new Error('publish is not implemented');
+    this.registerTopic(topic);
+    const msgs = this.getTopicMessages(topic);
+    
+    const nextOffset = this.topicSequence.get(topic) || 0;
+    this.topicSequence.set(topic, nextOffset + 1);
+
+    const msg: Message = {
+      id: `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      offset: nextOffset,
+      payload,
+      retryCount: 0,
+      visibleAfter: 0
+    };
+
+    msgs.push(msg);
+    return msg;
   }
 
   public consume(topic: string, consumerId: string): Message | null {
-    // TODO: Fetch next visible message for the consumer based on offset
-    // TODO: Verify if the message's visibleAfter timestamp has passed
-    // TODO: If found, update its visibleAfter timestamp (now + visibilityTimeout) to lock it, and return it
-    // TODO: If no visible message, return null
-    throw new Error('consume is not implemented');
+    const msgs = this.getTopicMessages(topic);
+    const key = `${topic}:${consumerId}`;
+    const currentOffset = this.consumerOffsets.get(key) || 0;
+    const now = Date.now();
+
+    // Find the first message whose offset is >= consumer's current offset and is visible
+    const msg = msgs.find(m => m.offset >= currentOffset && m.visibleAfter <= now);
+    if (msg) {
+      msg.visibleAfter = now + this.visibilityTimeout;
+      return msg;
+    }
+    return null;
   }
 
   public ack(topic: string, consumerId: string, messageId: string) {
-    // TODO: Confirm processing of message
-    // TODO: Commit consumer offset: increment consumer's offset key in consumerOffsets
+    const key = `${topic}:${consumerId}`;
+    const currentOffset = this.consumerOffsets.get(key) || 0;
+    const msgs = this.getTopicMessages(topic);
+    const msg = msgs.find(m => m.id === messageId);
+    if (msg) {
+      this.consumerOffsets.set(key, Math.max(currentOffset, msg.offset + 1));
+    }
   }
 
   public nack(topic: string, consumerId: string, messageId: string) {
-    // TODO: Release message immediately (set visibleAfter = 0) so other workers can process it
-    // TODO: Increment retryCount. If retryCount >= maxRetries, move message to DLQ (remove from main topic array)
+    const msgs = this.getTopicMessages(topic);
+    const msg = msgs.find(m => m.id === messageId);
+    if (msg) {
+      msg.visibleAfter = 0; // Release immediately
+      msg.retryCount += 1;
+      if (msg.retryCount >= this.maxRetries) {
+        this.dlq.push(msg);
+        const idx = msgs.indexOf(msg);
+        if (idx > -1) {
+          msgs.splice(idx, 1);
+        }
+      }
+    }
   }
 
   public getDLQ(): Message[] {
@@ -57,3 +93,4 @@ export class MessageQueueBroker {
     return this.topics.get(topic) || [];
   }
 }
+

@@ -98,7 +98,7 @@ Inside `/starter`, you will find:
 
 ---
 
-### Step-by-Step Implementation Guide
+### 3. Step-by-Step Implementation Guide
 
 #### 1. Open the `/starter` folder
 Examine the class interfaces and Nginx shell execution mocks in `index.ts`.
@@ -114,3 +114,184 @@ Write code that replaces upstream port numbers in the Nginx config template and 
 
 #### 5. Verify the Rollback Strategy
 Ensure that on health-check failure, the deployer leaves the active slot untouched, terminates the failed boot in the inactive slot, and raises an exception. Run the Vitest test suite to verify behavior.
+
+---
+
+## 4. 🧮 Mathematical Modeling of Traffic Shifting
+
+In a Canary Deployment, shifting traffic progressively rather than abruptly reduces risk. We can model the Canary traffic ratio $C(t) \in [0, 1]$ over time $t \ge 0$ as a piecewise linear step function:
+
+$$C(t) = \min\left(1.0, \left\lfloor \frac{t}{\tau} \right\rfloor \cdot \Delta w\right)$$
+
+Where:
+*   $\tau$ is the soak time interval between progressive shifts (e.g., $\tau = 5\text{ minutes}$).
+*   $\Delta w$ is the step percentage increment (e.g., $\Delta w = 0.10$ for $10\%$ steps).
+*   $t$ is the elapsed deployment time since the canary slot passed its smoke test.
+
+Alternatively, for continuous linear progressive routing:
+
+$$C(t) = \begin{cases} 
+      0 & t < t_{smoke} \\
+      r \cdot (t - t_{smoke}) & t_{smoke} \le t < t_{smoke} + \frac{1}{r} \\
+      1.0 & t \ge t_{smoke} + \frac{1}{r}
+   \end{cases}$$
+
+Where $r$ is the continuous shifting rate ($\text{sec}^{-1}$). If $r = 0.001$, traffic transitions from $0\%$ to $100\%$ over exactly $1000\text{ seconds}$ ($\approx 16.6\text{ minutes}$).
+
+---
+
+## 5. 📋 Chronological Deployment Trace Table
+
+The following trace table outlines the status of the environment, router, and health validation metrics during each step of a zero-downtime blue-to-green deployment:
+
+| Sequence Step | Action Description | Active Slot | Inactive Slot | Active Port | Inactive Port | Nginx Routing Upstream Configuration | Smoke Test Status | Traffic State |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **0. Idle (Steady)** | System is healthy on v1.0.0. | `blue` | `green` (idle) | `3001` | `3002` | `server 127.0.0.1:3001;` | `N/A` | $100\%$ production on Blue |
+| **1. Inactive Spinup** | Deployer boots v2.0.0 on inactive port. | `blue` | `green` (starting) | `3001` | `3002` | `server 127.0.0.1:3001;` | `Pending` | $100\%$ production on Blue |
+| **2. Probe Phase 1** | First HTTP ping sent to port 3002. | `blue` | `green` (booting) | `3001` | `3002` | `server 127.0.0.1:3001;` | `Failed` (Connection refused) | $100\%$ production on Blue |
+| **3. Probe Phase 2** | Second HTTP ping (retry after delay). | `blue` | `green` (alive) | `3001` | `3002` | `server 127.0.0.1:3001;` | `Passed` (HTTP 200 OK) | $100\%$ production on Blue |
+| **4. Traffic Shift** | Config rewrite and dynamic Nginx reload. | `green` | `blue` (drain) | `3002` | `3001` | `server 127.0.0.1:3002;` | `Passed` | $100\%$ production on Green |
+| **5. Post-Deployment** | Old active slot (Blue) safely terminated. | `green` | `blue` (stopped) | `3002` | `3001` | `server 127.0.0.1:3002;` | `N/A` | $100\%$ production on Green |
+
+---
+
+## 6. 🛠️ Premium Nginx Routing Configuration & Scripts
+
+Below is an production-grade, extensible Nginx configuration layout that implements dynamic slot routing and weight-based canary divisions.
+
+### 📝 Dynamic Upstream Routing (`nginx.conf`)
+```nginx
+# Main Nginx process configuration
+worker_processes auto;
+pid /var/run/nginx.pid;
+
+events {
+    worker_connections 1024;
+    use epoll;
+    multi_accept on;
+}
+
+http {
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+
+    # Performance optimizations
+    sendfile on;
+    tcp_nopush on;
+    tcp_nodelay on;
+    keepalive_timeout 65;
+
+    # Load dynamic routing configuration compiled by deployer
+    include /etc/nginx/conf.d/active_upstream.conf;
+
+    server {
+        listen 80;
+        server_name app.internal;
+
+        location / {
+            proxy_pass http://backend_servers;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            
+            # Disable buffering for WebSockets or real-time event streaming
+            proxy_buffering off;
+        }
+
+        # Status page for proxy diagnostics
+        location /nginx_status {
+            stub_status on;
+            allow 127.0.0.1;
+            deny all;
+        }
+    }
+}
+```
+
+### 📝 Active Upstream Config Map (`conf.d/active_upstream.conf`)
+This isolated configuration file is overwritten programmatically by the deployer and hot-reloaded:
+
+```nginx
+# For Blue-Green Strategy: Points entirely to the active slot
+upstream backend_servers {
+    server 127.0.0.1:3001; # Pointing to Blue (Active)
+}
+
+# OR For Canary Strategy: Weight-based split
+# upstream backend_servers {
+#     server 127.0.0.1:3001 weight=9; # Stable Blue (90%)
+#     server 127.0.0.1:3002 weight=1; # Canary Green (10%)
+# }
+```
+
+### 📝 Bash Switch Script (`switch.sh`)
+This lightweight automation script can be run on corporate environments to switch upstream configs and trigger a graceful reload:
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Configurations
+NGINX_CONF_DIR="/etc/nginx/conf.d"
+UPSTREAM_CONF="${NGINX_CONF_DIR}/active_upstream.conf"
+
+usage() {
+    echo "Usage: $0 [blue|green|canary]"
+    exit 1
+}
+
+if [ $# -lt 1 ]; then
+    usage
+fi
+
+SLOT=$1
+
+echo "==> Configuring traffic transition to: ${SLOT}"
+
+case "${SLOT}" in
+    blue)
+        echo -e "upstream backend_servers {\n    server 127.0.0.1:3001;\n}" > "${UPSTREAM_CONF}"
+        ;;
+    green)
+        echo -e "upstream backend_servers {\n    server 127.0.0.1:3002;\n}" > "${UPSTREAM_CONF}"
+        ;;
+    canary)
+        echo -e "upstream backend_servers {\n    server 127.0.0.1:3001 weight=9;\n    server 127.0.0.1:3002 weight=1;\n}" > "${UPSTREAM_CONF}"
+        ;;
+    *)
+        usage
+        ;;
+esac
+
+echo "==> Validating Nginx configuration syntax..."
+nginx -t
+
+echo "==> Dynamic hot-reload: Sending SIGHUP to Master..."
+nginx -s reload
+
+echo "==> Zero-Downtime routing update completed successfully!"
+```
+
+---
+
+## 7. ⚠️ Common Pitfalls & Anti-Patterns
+
+1.  **Direct Process Termination (SIGKILL)**: Stopping the old environment abruptly (`kill -9`) before connections naturally drain.
+    *   *Correction*: Utilize `SIGTERM` signals and allow a connection-drain time window (e.g., 30s) inside application servers.
+2.  **Lack of Database Schema Backward Compatibility**: Deploying v2.0.0 (Green) that relies on a schema change which breaks v1.0.0 (Blue) while both are simultaneously alive.
+    *   *Correction*: Always perform database migrations in backward-compatible steps: Expand column $\to$ Deploy Code $\to$ Contract old schema.
+3.  **Hardcoded Port Allocations**: Restricting port values without modular parametrization, preventing concurrent server launches.
+    *   *Correction*: Dynamically assign high-range dynamic ports or pass ports through clean ENV environment variables during launcher instantiation.
+4.  **Static Session Sticking without Distributed Storage**: Directing users to v2.0.0 where their authentication sessions don't exist because session data is kept in-memory rather than shared via Redis.
+    *   *Correction*: Store user sessions in a centralized, shared key-value store (e.g. Redis Sorted Sets or Redis key-value cache) to guarantee stateless application nodes.
+
+---
+
+## 8. 🔑 Key Takeaways
+
+*   **Zero-Downtime Transitions**: Nginx's master-worker architecture enables reloading configurations dynamically by letting old workers finish in-flight requests while new workers process fresh ones.
+*   **Tracer Bullet Testing**: Running smoke tests against the isolated inactive port prevents bad builds from ever reaching a single real-world client.
+*   **Dynamic Rollbacks**: On verification failure, stopping the starting server and resetting state is a highly safe, fully automated self-healing action.
+*   **Decoupled Components**: Keeping routing configurations separate from routing engines allows scripting code to dynamically manipulate proxy states securely.
+

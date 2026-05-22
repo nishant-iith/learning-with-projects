@@ -54,4 +54,21 @@ describe('Rate Limiters Lab 03: Throttling & Traffic Control', () => {
       expect(limiter.allow('user_4')).toBe(true); // Allowed because 1st request dropped out of the sliding window
     });
   });
+
+  describe('Leaky Bucket Limiter', () => {
+    it('should queue requests up to capacity and leak over time', async () => {
+      const limiter = new LeakyBucketLimiter(3, 10); // Capacity 3, Leak rate 10 per second (1 leak per 100ms)
+      
+      expect(limiter.allow('user_leaky')).toBe(true); // queue size 1
+      expect(limiter.allow('user_leaky')).toBe(true); // queue size 2
+      expect(limiter.allow('user_leaky')).toBe(true); // queue size 3 (at capacity)
+      expect(limiter.allow('user_leaky')).toBe(false); // Throttled!
+      
+      // Wait 120ms to allow 1 request to leak
+      await new Promise((resolve) => setTimeout(resolve, 120));
+      expect(limiter.allow('user_leaky')).toBe(true); // Can add to queue again
+    });
+  });
 });
+
+

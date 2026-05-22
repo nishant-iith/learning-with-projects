@@ -134,4 +134,38 @@ describe('Blue-Green & Canary Deployer Tests', () => {
     // Verify the inactive (green) slot was stopped (cleanup/rollback)
     expect(mockLauncher.stop).toHaveBeenCalledWith('green');
   });
+
+  it('should abort deployment and rollback if Nginx reload fails', async () => {
+    // Force Nginx reload to fail (return false)
+    mockRouter.reload = vi.fn(async () => false);
+
+    const deployer = new BlueGreenDeployer(mockRouter, mockLauncher, {
+      smokeTestRetries: 1,
+      smokeTestIntervalMs: 1
+    });
+
+    await expect(deployer.deploy('v2.0.0')).rejects.toThrow(/Nginx hot-reload failed/);
+
+    // Verify launcher was stopped for green slot (cleanup)
+    expect(mockLauncher.stop).toHaveBeenCalledWith('green');
+  });
+
+  it('should use default retry and interval settings when options are omitted', async () => {
+    // We omit option object to test default options: smokeTestRetries default = 3
+    let callCount = 0;
+    mockLauncher.isAlive = vi.fn(async () => {
+      callCount++;
+      return false; // Force fail all retries
+    });
+
+    const deployer = new BlueGreenDeployer(mockRouter, mockLauncher);
+
+    await expect(deployer.deploy('v2.0.0')).rejects.toThrow(/Smoke test failed/);
+
+    // Verify it called isAlive with inactivePort (3002) exactly 3 times (the default retries)
+    const inactiveCalls = (mockLauncher.isAlive as any).mock.calls.filter((call: any) => call[0] === 3002);
+    expect(inactiveCalls.length).toBe(3);
+  });
 });
+
+

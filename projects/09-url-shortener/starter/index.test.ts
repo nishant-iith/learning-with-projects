@@ -23,6 +23,10 @@ describe("Base62Converter", () => {
     expect(encoded).toBe("0");
     expect(Base62Converter.decode("0")).toBe(0);
   });
+
+  it("should throw error for invalid character decoding", () => {
+    expect(() => Base62Converter.decode("invalid-char!@")).toThrow("Invalid Base62 character");
+  });
 });
 
 describe("URLShortenerService", () => {
@@ -50,6 +54,15 @@ describe("URLShortenerService", () => {
     expect(db.get(storedId)).toBe(longUrl);
   });
 
+  it("should deduplicate and avoid collision when shortening identical URLs", async () => {
+    const longUrl = "https://example.com/duplicate";
+    const key1 = await service.shorten(longUrl);
+    const key2 = await service.shorten(longUrl);
+
+    expect(key1).toBe(key2);
+    expect(db.size).toBe(1); // Relational database only stores 1 record
+  });
+
   it("should resolve via Cache-Aside strategy", async () => {
     const longUrl = "https://google.com";
     const key = await service.shorten(longUrl);
@@ -70,6 +83,11 @@ describe("URLShortenerService", () => {
 
     const resolvedUrl2 = await service.resolve(key, "127.0.0.1", "Mozilla/5.0");
     expect(resolvedUrl2).toBe(longUrl);
+  });
+
+  it("should return null on resolving non-existent keys gracefully without throwing errors", async () => {
+    const result = await service.resolve("nonexistent", "127.0.0.1", "unknown");
+    expect(result).toBeNull();
   });
 
   it("should stream click events asynchronously to MQ during resolve", async () => {
@@ -128,6 +146,16 @@ describe("URLShortenerServer Simulation", () => {
     const getRes = await server.handleRequest(getReq);
     expect(getRes.status).toBe(302);
     expect(getRes.headers["Location"]).toBe("https://github.com");
+  });
+
+  it("should return 400 bad request for empty/malformed shorten payloads", async () => {
+    const postReq: MockRequest = {
+      method: "POST",
+      url: "/shorten",
+      body: {}
+    };
+    const res = await server.handleRequest(postReq);
+    expect(res.status).toBe(400);
   });
 
   it("should return 404 for unknown shortened links", async () => {
